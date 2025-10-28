@@ -3,170 +3,161 @@
 #include <math.h>
 
 typedef struct Node {
-    int data;
+    int val;
     struct Node *left, *right;
 } Node;
 
-// create node, 0 means no node
-Node* create(int val) {
-    if (!val) return NULL;
-    Node* node = malloc(sizeof(Node));
-    node->data = val;
-    node->left = node->right = NULL;
-    return node;
+// make a node (0 = null)
+Node* node(int v) {
+    if (!v) return NULL;
+    Node *n = malloc(sizeof(Node));
+    n->val = v;
+    n->left = n->right = NULL;
+    return n;
 }
 
-// build tree from level-order list
-Node* make_tree(int arr[], int size) {
-    if (size == 0 || arr[0] == 0) return NULL;
+// build tree using level order array
+Node* tree_from_array(int a[], int n) {
+    if (n == 0 || a[0] == 0) return NULL;
 
-    Node** nodes = malloc(size * sizeof(Node*));
-    for (int i = 0; i < size; i++) {
-        nodes[i] = arr[i] ? create(arr[i]) : NULL;
+    Node** all = malloc(n * sizeof(Node*));
+    for (int i = 0; i < n; i++) all[i] = a[i] ? node(a[i]) : NULL;
+
+    for (int i = 0, j = 1; j < n; i++) {
+        if (!all[i]) continue;
+        all[i]->left  = (j < n) ? all[j++] : NULL;
+        all[i]->right = (j < n) ? all[j++] : NULL;
     }
 
-    int child_idx = 1;
-    for (int i = 0; child_idx < size; i++) {
-        if (!nodes[i]) continue;
-        if (child_idx < size) nodes[i]->left = nodes[child_idx++];
-        if (child_idx < size) nodes[i]->right = nodes[child_idx++];
-    }
-
-    Node* root = nodes[0];
-    free(nodes);
+    Node* root = all[0];
+    free(all);
     return root;
 }
 
-int cameras = 0;
+int phones = 0;
 
-// return: 0 = covered, 1 = need camera, 2 = has camera
-int place(Node* node) {
-    if (!node) return 0;
+// 0 = safe, 1 = needs cover, 2 = has camera
+int cover(Node* cur) {
+    if (!cur) return 0;
 
-    int l = place(node->left);
-    int r = place(node->right);
+    int l = cover(cur->left);
+    int r = cover(cur->right);
 
     if (l == 1 || r == 1) {
-        cameras++;
-        return 2;  // put camera here
+        phones++;
+        return 2;
     }
-    if (l == 2 || r == 2) return 0;  // covered by child
-    return 1;  // ask parent to cover
+    if (l == 2 || r == 2) return 0;
+    return 1;
 }
 
-// get first n prime numbers
-int* get_primes(int n) {
+// first n primes
+int* primes(int n) {
     if (n <= 0) return NULL;
 
-    int max_n = n < 5 ? 20 : (int)(n * (log(n) + log(log(n + 1))) + 15);
-    char* prime = calloc(max_n + 1, sizeof(char));
-    for (int i = 2; i <= max_n; i++) prime[i] = 1;
+    int bound = n < 6 ? 18 : (int)(n * log(n) + n * log(log(n + 2)) + 12);
+    char* is_prime = calloc(bound + 1, 1);
 
-    for (int i = 2; i * i <= max_n; i++) {
-        if (prime[i]) {
-            for (int j = i * i; j <= max_n; j += i)
-                prime[j] = 0;
-        }
-    }
+    for (int i = 2; i <= bound; i++) is_prime[i] = 1;
+    for (int i = 2; i * i <= bound; i++)
+        if (is_prime[i])
+            for (int j = i * i; j <= bound; j += i)
+                is_prime[j] = 0;
 
-    int* list = malloc(n * sizeof(int));
-    int pos = 0;
-    for (int i = 2; pos < n && i <= max_n; i++)
-        if (prime[i]) list[pos++] = i;
+    int* res = malloc(n * sizeof(int));
+    int k = 0;
+    for (int i = 2; k < n && i <= bound; i++)
+        if (is_prime[i]) res[k++] = i;
 
-    free(prime);
-    return list;
+    free(is_prime);
+    return res;
 }
 
-typedef struct TrieNode {
-    struct TrieNode* next[2];
-    int count;
-} TrieNode;
+typedef struct Trie {
+    struct Trie* child[2];
+    int size;
+} Trie;
 
-TrieNode* new_node() {
-    TrieNode* t = malloc(sizeof(TrieNode));
-    t->next[0] = t->next[1] = NULL;
-    t->count = 0;
+Trie* new() {
+    Trie* t = malloc(sizeof(Trie));
+    t->child[0] = t->child[1] = NULL;
+    t->size = 0;
     return t;
 }
 
-// insert number (MSB to LSB)
-void add(TrieNode* root, int num) {
-    TrieNode* cur = root;
-    for (int i = 20; i >= 0; i--) {
-        int bit = (num >> i) & 1;
-        if (!cur->next[bit]) cur->next[bit] = new_node();
-        cur = cur->next[bit];
-        cur->count++;
+// insert number (LSB to MSB)
+void put(Trie* root, int x) {
+    Trie* cur = root;
+    for (int i = 0; i < 21; i++) {
+        int b = x & 1;
+        if (!cur->child[b]) cur->child[b] = new();
+        cur = cur->child[b];
+        cur->size++;
+        x >>= 1;
     }
 }
 
-// count how many numbers give XOR <= k
-int find_xor(TrieNode* root, int num, int k) {
+// count numbers y where (x ^ y) <= k
+int get(Trie* root, int x, int k) {
     if (!root) return 0;
-    TrieNode* cur = root;
+    Trie* cur = root;
     int ans = 0;
 
-    for (int i = 20; i >= 0; i--) {
-        int nbit = (num >> i) & 1;
-        int kbit = (k >> i) & 1;
+    for (int i = 0; i < 21; i++) {
+        int xb = x & 1;
+        int kb = k & 1;
 
-        if (kbit) {
-            if (cur->next[nbit]) ans += cur->next[nbit]->count;
-            cur = cur->next[1 - nbit];
+        if (kb) {
+            if (cur->child[xb]) ans += cur->child[xb]->size;
+            cur = cur->child[1 - xb];
         } else {
-            cur = cur->next[nbit];
+            cur = cur->child[xb];
         }
-        if (!cur) break;
+        if (!cur) return ans;
+        x >>= 1;
+        k >>= 1;
     }
     return ans;
 }
 
-long long count_xor_leq(int nums[], int n, int limit) {
-    TrieNode* trie = new_node();
-    long long result = 0;
-
+long long pairs_leq(int a[], int n, int cap) {
+    Trie* trie = new();
+    long long cnt = 0;
     for (int i = 0; i < n; i++) {
-        result += find_xor(trie, nums[i], limit);
-        add(trie, nums[i]);
+        cnt += get(trie, a[i], cap);
+        put(trie, a[i]);
     }
-    return result;
+    return cnt;
 }
 
-long long count_in_range(int nums[], int n, int low, int high) {
+long long pairs_range(int a[], int n, int l, int r) {
     if (n < 2) return 0;
-    long long total_up_to_high = count_xor_leq(nums, n, high);
-    long long total_up_to_low = (low == 0) ? 0 : count_xor_leq(nums, n, low - 1);
-    return total_up_to_high - total_up_to_low;
+    return pairs_leq(a, n, r) - (l ? pairs_leq(a, n, l - 1) : 0);
 }
 
 int main() {
     int n;
     if (scanf("%d", &n) != 1) return 0;
 
-    int* input = malloc(n * sizeof(int));
-    for (int i = 0; i < n; i++) {
-        if (scanf("%d", &input[i]) != 1) {
-            free(input);
-            return 0;
-        }
-    }
+    int* level = malloc(n * sizeof(int));
+    for (int i = 0; i < n; i++)
+        if (scanf("%d", &level[i]) != 1) { free(level); return 0; }
 
-    Node* root = make_tree(input, n);
-    int status = place(root);
-    if (status == 1) cameras++;  // root needs camera
+    Node* root = tree_from_array(level, n);
+    int need = cover(root);
+    if (need == 1) phones++;
 
-    printf("Number of phones needed: %d\n", cameras);
+    printf("Number of phones needed: %d\n", phones);
 
     int L, R;
     if (scanf("%d %d", &L, &R) == 2) {
-        int* primes = get_primes(cameras);
-        long long total_pairs = 1LL * cameras * (cameras - 1) / 2;
-        long long good_pairs = count_in_range(primes, cameras, L, R);
-        printf("number of xor pairs outside the range: %lld\n", total_pairs - good_pairs);
-        free(primes);
+        int* p = primes(phones);
+        long long total = 1LL * phones * (phones - 1) / 2;
+        long long inside = pairs_range(p, phones, L, R);
+        printf("number of xor pairs outside the range: %lld\n", total - inside);
+        free(p);
     }
 
-    free(input);
+    free(level);
     return 0;
 }
